@@ -7,24 +7,28 @@
  * in the LICENSE file.
  */
 
-#include "../port/error.h"
-#include "../port/lib.h"
-#include "dat.h"
-#include "fns.h"
-#include "io.h"
-#include "mem.h"
-#include "u.h"
-#include "ureg.h"
-
-#include "../port/sd.h"
+#include <vfs.h>
+#include <kfs.h>
+#include <slab.h>
+#include <kmalloc.h>
+#include <kref.h>
+#include <string.h>
+#include <stdio.h>
+#include <assert.h>
+#include <error.h>
+#include <cpio.h>
+#include <pmap.h>
+#include <smp.h>
+#include <ip.h>
+#include <sd.h>
 
 static int scsitest(struct sdreq *r)
 {
 	r->write = 0;
 	memset(r->cmd, 0, sizeof(r->cmd));
-	r->cmd[1] = r->lun << 5;
+	r->cmd[1] = r->lun<<5;
 	r->clen = 6;
-	r->data = nil;
+	r->data = NULL;
 	r->dlen = 0;
 	r->flags = 0;
 
@@ -39,34 +43,35 @@ int scsiverify(struct sdunit *unit)
 	int i, status;
 	uint8_t *inquiry;
 
-	if ((r = malloc(sizeof(struct sdreq))) == nil)
+	r = kzmalloc(sizeof(struct sdreq), 0);
+	if (r == NULL)
 		return 0;
-	if ((inquiry = sdmalloc(sizeof(unit->inquiry))) == nil) {
-		free(r);
+	inquiry = kzmalloc(sizeof(unit->inquiry), MEM_WAIT);
+	if (inquiry == NULL) {
+		kfree(r);
 		return 0;
 	}
 	r->unit = unit;
-	r->lun = 0; /* ??? */
+	r->lun = 0;		/* ??? */
 
 	memset(unit->inquiry, 0, sizeof(unit->inquiry));
 	r->write = 0;
 	r->cmd[0] = 0x12;
-	r->cmd[1] = r->lun << 5;
-	r->cmd[4] = sizeof(unit->inquiry) - 1;
+	r->cmd[1] = r->lun<<5;
+	r->cmd[4] = sizeof(unit->inquiry)-1;
 	r->clen = 6;
 	r->data = inquiry;
-	r->dlen = sizeof(unit->inquiry) - 1;
+	r->dlen = sizeof(unit->inquiry)-1;
 	r->flags = 0;
 
 	r->status = ~0;
 	if (unit->dev->ifc->rio(r) != SDok) {
-		free(r);
+		kfree(r);
 		return 0;
 	}
 	memmove(unit->inquiry, inquiry, r->dlen);
-	free(inquiry);
+	kfree(inquiry);
 
-	SET(status);
 	for (i = 0; i < 3; i++) {
 		while ((status = scsitest(r)) == SDbusy)
 			;
@@ -104,10 +109,10 @@ int scsiverify(struct sdunit *unit)
 			memset(r->cmd, 0, sizeof(r->cmd));
 			r->write = 0;
 			r->cmd[0] = 0x1B;
-			r->cmd[1] = (r->lun << 5) | 0x01;
+			r->cmd[1] = (r->lun<<5)|0x01;
 			r->cmd[4] = 1;
 			r->clen = 6;
-			r->data = nil;
+			r->data = NULL;
 			r->dlen = 0;
 			r->flags = 0;
 
@@ -115,7 +120,7 @@ int scsiverify(struct sdunit *unit)
 			unit->dev->ifc->rio(r);
 		}
 	}
-	free(r);
+	kfree(r);
 
 	if (status == SDok || status == SDcheck)
 		return 1;
@@ -124,7 +129,7 @@ int scsiverify(struct sdunit *unit)
 
 static int scsirio(struct sdreq *r)
 {
-	struct proc *up = externup();
+	ERRSTACK(1);
 	/*
 	 * Perform an I/O request, returning
 	 *	-1	failure
@@ -142,10 +147,10 @@ static int scsirio(struct sdreq *r)
 		if (!(r->flags & SDvalidsense))
 			break;
 		switch (r->sense[2] & 0x0F) {
-		case 0x00: /* no sense */
-		case 0x01: /* recovered error */
+		case 0x00:		/* no sense */
+		case 0x01:		/* recovered error */
 			return 2;
-		case 0x06: /* check condition */
+		case 0x06:		/* check condition */
 			/*
 			 * 0x28 - not ready to ready transition,
 			 *	  medium may have changed.
@@ -156,7 +161,7 @@ static int scsirio(struct sdreq *r)
 			if (r->sense[12] == 0x29)
 				return 2;
 			break;
-		case 0x02: /* not ready */
+		case 0x02:		/* not ready */
 			/*
 			 * If no medium present, bail out.
 			 * If unit is becoming ready, rather than not
@@ -168,7 +173,7 @@ static int scsirio(struct sdreq *r)
 
 			while (waserror())
 				;
-			tsleep(&up->sleep, return0, 0, 500);
+			kthread_usleep(500 * 1000);
 			poperror();
 			scsitest(r);
 			return 2;
@@ -188,17 +193,19 @@ int scsionline(struct sdunit *unit)
 	uint8_t *p;
 	int ok, retries;
 
-	if ((r = malloc(sizeof(struct sdreq))) == nil)
+	r = kzmalloc(sizeof(struct sdreq), 0);
+	if (r == NULL)
 		return 0;
-	if ((p = sdmalloc(8)) == nil) {
-		free(r);
+	p = kzmalloc(8, 0);
+	if (p == NULL) {
+		kfree(r);
 		return 0;
 	}
 
 	ok = 0;
 
 	r->unit = unit;
-	r->lun = 0; /* ??? */
+	r->lun = 0;				/* ??? */
 	for (retries = 0; retries < 10; retries++) {
 		/*
 		 * Read-capacity is mandatory for DA, WORM, CD-ROM and
@@ -209,7 +216,7 @@ int scsionline(struct sdunit *unit)
 		r->write = 0;
 		memset(r->cmd, 0, sizeof(r->cmd));
 		r->cmd[0] = 0x25;
-		r->cmd[1] = r->lun << 5;
+		r->cmd[1] = r->lun<<5;
 		r->clen = 10;
 		r->data = p;
 		r->dlen = 8;
@@ -220,8 +227,8 @@ int scsionline(struct sdunit *unit)
 		default:
 			break;
 		case 0:
-			unit->sectors = (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
-			unit->secsize = (p[4] << 24) | (p[5] << 16) | (p[6] << 8) | p[7];
+			unit->sectors = (p[0]<<24)|(p[1]<<16)|(p[2]<<8)|p[3];
+			unit->secsize = (p[4]<<24)|(p[5]<<16)|(p[6]<<8)|p[7];
 
 			/*
 			 * Some ATAPI CD readers lie about the block size.
@@ -250,11 +257,11 @@ int scsionline(struct sdunit *unit)
 		}
 		break;
 	}
-	free(p);
-	free(r);
+	kfree(p);
+	kfree(r);
 
 	if (ok)
-		return ok + retries;
+		return ok+retries;
 	else
 		return 0;
 }
@@ -265,10 +272,11 @@ int scsiexec(struct sdunit *unit, int write, uint8_t *cmd, int clen, void *data,
 	struct sdreq *r;
 	int status;
 
-	if ((r = malloc(sizeof(struct sdreq))) == nil)
+	r = kzmalloc(sizeof(struct sdreq), 0);
+	if (r == NULL)
 		return SDmalloc;
 	r->unit = unit;
-	r->lun = cmd[1] >> 5; /* ??? */
+	r->lun = cmd[1]>>5;		/* ??? */
 	r->write = write;
 	memmove(r->cmd, cmd, clen);
 	r->clen = clen;
@@ -288,9 +296,9 @@ int scsiexec(struct sdunit *unit, int write, uint8_t *cmd, int clen, void *data,
 	case SDok:
 		if (dlen)
 			*dlen = r->rlen;
-	/*FALLTHROUGH*/
+		/*FALLTHROUGH*/
 	case SDcheck:
-	/*FALLTHROUGH*/
+		/*FALLTHROUGH*/
 	default:
 		/*
 		 * It's more complicated than this. There are conditions
@@ -304,13 +312,13 @@ int scsiexec(struct sdunit *unit, int write, uint8_t *cmd, int clen, void *data,
 		 */
 		break;
 	}
-	sdfree(r);
+	kfree(r);
 
 	return status;
 }
 
-static void scsifmt10(struct sdreq *r, int write, int lun, uint32_t nb,
-                      uint64_t bno)
+static void
+scsifmt10(struct sdreq *r, int write, int lun, uint32_t nb, uint64_t bno)
 {
 	uint8_t *c;
 
@@ -319,21 +327,21 @@ static void scsifmt10(struct sdreq *r, int write, int lun, uint32_t nb,
 		c[0] = 0x28;
 	else
 		c[0] = 0x2A;
-	c[1] = lun << 5;
-	c[2] = bno >> 24;
-	c[3] = bno >> 16;
-	c[4] = bno >> 8;
+	c[1] = lun<<5;
+	c[2] = bno>>24;
+	c[3] = bno>>16;
+	c[4] = bno>>8;
 	c[5] = bno;
 	c[6] = 0;
-	c[7] = nb >> 8;
+	c[7] = nb>>8;
 	c[8] = nb;
 	c[9] = 0;
 
 	r->clen = 10;
 }
 
-static void scsifmt16(struct sdreq *r, int write, int lun, uint32_t nb,
-                      uint64_t bno)
+static void
+scsifmt16(struct sdreq *r, int write, int lun, uint32_t nb, uint64_t bno)
 {
 	uint8_t *c;
 
@@ -342,18 +350,18 @@ static void scsifmt16(struct sdreq *r, int write, int lun, uint32_t nb,
 		c[0] = 0x88;
 	else
 		c[0] = 0x8A;
-	c[1] = lun << 5; /* so wrong */
-	c[2] = bno >> 56;
-	c[3] = bno >> 48;
-	c[4] = bno >> 40;
-	c[5] = bno >> 32;
-	c[6] = bno >> 24;
-	c[7] = bno >> 16;
-	c[8] = bno >> 8;
+	c[1] = lun<<5;		/* so wrong */
+	c[2] = bno>>56;
+	c[3] = bno>>48;
+	c[4] = bno>>40;
+	c[5] = bno>>32;
+	c[6] = bno>>24;
+	c[7] = bno>>16;
+	c[8] = bno>>8;
 	c[9] = bno;
-	c[10] = nb >> 24;
-	c[11] = nb >> 16;
-	c[12] = nb >> 8;
+	c[10] = nb>>24;
+	c[11] = nb>>16;
+	c[12] = nb>>8;
 	c[13] = nb;
 	c[14] = 0;
 	c[15] = 0;
@@ -367,18 +375,19 @@ int32_t scsibio(struct sdunit *unit, int lun, int write, void *data, int32_t nb,
 	struct sdreq *r;
 	int32_t rlen;
 
-	if ((r = malloc(sizeof(struct sdreq))) == nil)
-		error(Enomem);
+	r = kzmalloc(sizeof(struct sdreq), 0);
+	if (r == NULL)
+		error(ENOMEM, "scsibio: can't allocate %d bytes", sizeof(*r));
 	r->unit = unit;
 	r->lun = lun;
 again:
 	r->write = write;
-	if (bno >= (1ULL << 32))
+	if (bno >= (1ULL<<32))
 		scsifmt16(r, write, lun, nb, bno);
 	else
 		scsifmt10(r, write, lun, nb, bno);
 	r->data = data;
-	r->dlen = nb * unit->secsize;
+	r->dlen = nb*unit->secsize;
 	r->flags = 0;
 
 	r->status = ~0;
@@ -396,12 +405,12 @@ again:
 		switch (r->sense[2] & 0x0F) {
 		default:
 			break;
-		case 0x01: /* recovered error */
-			print("%s: recovered error at sector %llu\n", unit->SDperm.name,
-			      bno);
+		case 0x01:		/* recovered error */
+			printd("%s: recovered error at sector %llu\n",
+				unit->SDperm.name, bno);
 			rlen = r->rlen;
 			break;
-		case 0x06: /* check condition */
+		case 0x06:		/* check condition */
 			/*
 			 * Check for a removeable media change.
 			 * If so, mark it by zapping the geometry info
@@ -412,7 +421,7 @@ again:
 			if (unit->inquiry[1] & SDinq1removable)
 				unit->sectors = 0;
 			break;
-		case 0x02: /* not ready */
+		case 0x02:		/* not ready */
 			/*
 			 * If unit is becoming ready,
 			 * rather than not not ready, try again.
@@ -423,7 +432,8 @@ again:
 		}
 		break;
 	}
-	free(r);
+	kfree(r);
 
 	return rlen;
 }
+
