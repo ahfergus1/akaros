@@ -388,8 +388,10 @@ devdirread(struct chan *c, char *d, long n,
 void devpermcheck(char *fileuid, uint32_t perm, int omode)
 {
 	int rwx;
+	return;
 	/* select user, group, or other from the traditional rwxrwxrwx, shifting
 	 * into the upper-most position */
+	printk("devpermcheck: current->user=%s, perm=0%o\n", current->user, perm);
 	if (strcmp(current->user, fileuid) == 0)
 		perm <<= 0;
 	else if (strcmp(current->user, eve) == 0)

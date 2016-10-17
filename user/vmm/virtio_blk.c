@@ -35,6 +35,8 @@ void blk_init_fn(struct virtio_vq_dev *vqdev, const char *filename)
 	if (stat(filename, &stat_result) == -1)
 		VIRTIO_DEV_ERRX(vqdev, "Could not stat file %s", filename);
 	len = stat_result.st_size / 512;
+        fprintf(stderr, "VirtIO drive blocks: %llu\n", len);
+        //while (1);
 
 	cfg->capacity = len;
 	cfg_d->capacity = len;

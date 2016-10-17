@@ -12,19 +12,20 @@
  */
 
 #include <vfs.h>
+
+#include <assert.h>
+#include <cpio.h>
+#include <error.h>
+#include <ip.h>
 #include <kfs.h>
-#include <slab.h>
 #include <kmalloc.h>
 #include <kref.h>
-#include <string.h>
-#include <stdio.h>
-#include <assert.h>
-#include <error.h>
-#include <cpio.h>
 #include <pmap.h>
+#include <slab.h>
 #include <smp.h>
-#include <ip.h>
+#include <stdio.h>
 #include <string.h>
+
 #include <sd.h>
 
 extern struct dev sddevtab;
@@ -34,17 +35,15 @@ struct sdifc sdiahciifc;
  * necessary;
  * we can use linker sets at some point, as we do elsewhere in Akaros. */
 struct sdifc *sdifc[] = {
-	&sdiahciifc,
-
-	NULL,
+    &sdiahciifc, NULL,
 };
 
 static const char Echange[] = "media or partition has changed";
 
 static const char devletters[] =
-	"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-static struct sdev *devs[sizeof(devletters)-1];
+static struct sdev *devs[sizeof(devletters) - 1];
 
 static qlock_t devslock = QLOCK_INITIALIZER(devslock);
 
@@ -55,46 +54,46 @@ enum {
 };
 
 enum {
-	Qtopdir		= 1,		/* top level directory */
+	Qtopdir = 1, /* top level directory */
 	Qtopbase,
-	Qtopctl		 = Qtopbase,
+	Qtopctl = Qtopbase,
 
-	Qunitdir,			/* directory per unit */
+	Qunitdir, /* directory per unit */
 	Qunitbase,
-	Qctl		= Qunitbase,
+	Qctl = Qunitbase,
 	Qraw,
 	Qpart,
 
-	TypeLOG		= 4,
-	NType		= (1<<TypeLOG),
-	TypeMASK	= (NType-1),
-	TypeSHIFT	= 0,
+	TypeLOG = 4,
+	NType = (1 << TypeLOG),
+	TypeMASK = (NType - 1),
+	TypeSHIFT = 0,
 
-	PartLOG		= 8,
-	NPart		= (1<<PartLOG),
-	PartMASK	= (NPart-1),
-	PartSHIFT	= TypeLOG,
+	PartLOG = 8,
+	NPart = (1 << PartLOG),
+	PartMASK = (NPart - 1),
+	PartSHIFT = TypeLOG,
 
-	UnitLOG		= 8,
-	NUnit		= (1<<UnitLOG),
-	UnitMASK	= (NUnit-1),
-	UnitSHIFT	= (PartLOG+TypeLOG),
+	UnitLOG = 8,
+	NUnit = (1 << UnitLOG),
+	UnitMASK = (NUnit - 1),
+	UnitSHIFT = (PartLOG + TypeLOG),
 
-	DevLOG		= 8,
-	NDev		= (1 << DevLOG),
-	DevMASK		= (NDev-1),
-	DevSHIFT	 = (UnitLOG+PartLOG+TypeLOG),
+	DevLOG = 8,
+	NDev = (1 << DevLOG),
+	DevMASK = (NDev - 1),
+	DevSHIFT = (UnitLOG + PartLOG + TypeLOG),
 
 	Ncmd = 20,
 };
 
-#define TYPE(q)		((((uint32_t)(q).path)>>TypeSHIFT) & TypeMASK)
-#define PART(q)		((((uint32_t)(q).path)>>PartSHIFT) & PartMASK)
-#define UNIT(q)		((((uint32_t)(q).path)>>UnitSHIFT) & UnitMASK)
-#define DEV(q)		((((uint32_t)(q).path)>>DevSHIFT) & DevMASK)
-#define QID(d, u, p, t)	(((d)<<DevSHIFT)|((u)<<UnitSHIFT)| \
-	 ((p)<<PartSHIFT)|((t)<<TypeSHIFT))
-
+#define TYPE(q) ((((uint32_t)(q).path) >> TypeSHIFT) & TypeMASK)
+#define PART(q) ((((uint32_t)(q).path) >> PartSHIFT) & PartMASK)
+#define UNIT(q) ((((uint32_t)(q).path) >> UnitSHIFT) & UnitMASK)
+#define DEV(q) ((((uint32_t)(q).path) >> DevSHIFT) & DevMASK)
+#define QID(d, u, p, t)                                                        \
+	(((d) << DevSHIFT) | ((u) << UnitSHIFT) | ((p) << PartSHIFT) |             \
+	 ((t) << TypeSHIFT))
 
 void sdaddpart(struct sdunit *unit, char *name, uint64_t start, uint64_t end)
 {
@@ -140,7 +139,7 @@ void sdaddpart(struct sdunit *unit, char *name, uint64_t start, uint64_t end)
 		if (pp == NULL)
 			error(ENOMEM, "%s: Can't allocate space for %d partitions",
 			      unit->npart + SDnpart);
-		memmove(pp, unit->part, sizeof(struct sdpart)*unit->npart);
+		memmove(pp, unit->part, sizeof(struct sdpart) * unit->npart);
 		kfree(unit->part);
 		unit->part = pp;
 		partno = unit->npart;
@@ -181,8 +180,7 @@ static void sddelpart(struct sdunit *unit, char *name)
 	if (i >= unit->npart)
 		error(EINVAL, "%s: %d > npart %d", __func__, i, unit->npart);
 	/* no permission checking in akaros at present. */
-	//if (strcmp(up->user, pp->sdperm.user) && !iseve())
-	//	error(EPERM, "%s: );
+	/* TODO: Implement permission checking and raise errors as appropriate. */
 	pp->valid = 0;
 	pp->vers++;
 }
@@ -216,7 +214,7 @@ static int sdinitpart(struct sdunit *unit)
 	}
 
 	/* device must be connected or not; other values are trouble */
-	if (unit->inquiry[0] & 0xC0)	/* see SDinq0periphqual */
+	if (unit->inquiry[0] & 0xC0) /* see SDinq0periphqual */
 		return 0;
 	switch (unit->inquiry[0] & SDinq0periphtype) {
 	case SDperdisk:
@@ -234,14 +232,14 @@ static int sdinitpart(struct sdunit *unit)
 		sdincvers(unit);
 		sdaddpart(unit, "data", 0, unit->sectors);
 
-		/*
-		 * Use partitions passed from boot program,
-		 * e.g.
-		 *	sdC0part=dos 63 123123/plan9 123123 456456
-		 * This happens before /boot sets hostname so the
-		 * partitions will have the null-string for user.
-		 * The gen functions patch it up.
-		 */
+/*
+ * Use partitions passed from boot program,
+ * e.g.
+ *	sdC0part=dos 63 123123/plan9 123123 456456
+ * This happens before /boot sets hostname so the
+ * partitions will have the null-string for user.
+ * The gen functions patch it up.
+ */
 #if 0
 		snprintf(buf, sizeof(buf), "%spart", unit->sdperm.name);
 		for (p = getconf(buf); p != NULL; p = q) {
@@ -254,7 +252,7 @@ static int sdinitpart(struct sdunit *unit)
 
 			start = strtoull(f[1], 0, 0);
 			end = strtoull(f[2], 0, 0);
-			if (!waserror()) {
+			if(!waserror()){
 				sdaddpart(unit, f[0], start, end);
 				poperror();
 			}
@@ -379,10 +377,9 @@ void sdadddevs(struct sdev *sdev)
 	for (; sdev; sdev = next) {
 		next = sdev->next;
 
-		sdev->unit = (struct sdunit**)kzmalloc(sdev->nunit *
-		                                       sizeof(struct sdunit *),
-		                                       0);
-		sdev->unitflg = (int*)kzmalloc(sdev->nunit * sizeof(int), 0);
+		sdev->unit = (struct sdunit **)kzmalloc(
+		    sdev->nunit * sizeof(struct sdunit *), 0);
+		sdev->unitflg = (int *)kzmalloc(sdev->nunit * sizeof(int), 0);
 		if (sdev->unit == NULL || sdev->unitflg == NULL) {
 			printd("sdadddevs: out of memory\n");
 		giveup:
@@ -400,7 +397,7 @@ void sdadddevs(struct sdev *sdev)
 		}
 		qlock(&devslock);
 		for (i = 0; i < ARRAY_SIZE(devs); i++) {
-			j = (id+i)%ARRAY_SIZE(devs);
+			j = (id + i) % ARRAY_SIZE(devs);
 			if (devs[j] == NULL) {
 				sdev->idno = devletters[j];
 				devs[j] = sdev;
@@ -416,23 +413,14 @@ void sdadddevs(struct sdev *sdev)
 	}
 }
 
-//void
-//sdrmdevs(SDev *sdev)
-//{
-//	char buf[2];
-//
-//	snprintf(buf, sizeof buf, "%c", sdev->idno);
-//	unconfigure(buf);
-//}
-
 void sdaddallconfs(void (*addconf)(struct sdunit *))
 {
 	int i, u;
 	struct sdev *sdev;
 
-	for (i = 0; i < ARRAY_SIZE(devs); i++)		/* each controller */
+	for (i = 0; i < ARRAY_SIZE(devs); i++) /* each controller */
 		for (sdev = devs[i]; sdev; sdev = sdev->next)
-			for (u = 0; u < sdev->nunit; u++)	/* each drive */
+			for (u = 0; u < sdev->nunit; u++) /* each drive */
 				(*addconf)(sdev->unit[u]);
 }
 
@@ -458,7 +446,7 @@ static int sd2gen(struct chan *c, int i, struct dir *dp)
 		perm = &unit->ctlperm;
 		if (emptystr(perm->user)) {
 			kstrdup(&perm->user, eve);
-			perm->perm = 0644;	/* nothing secret in ctl */
+			perm->perm = 0644; /* nothing secret in ctl */
 		}
 		devdir(c, q, "ctl", 0, perm->user, perm->perm, dp);
 		rv = 1;
@@ -470,7 +458,7 @@ static int sd2gen(struct chan *c, int i, struct dir *dp)
 		perm = &unit->rawperm;
 		if (emptystr(perm->user)) {
 			kstrdup(&perm->user, eve);
-			perm->perm = DMEXCL|0600;
+			perm->perm = DMEXCL | 0600;
 		}
 		devdir(c, q, "raw", 0, perm->user, perm->perm, dp);
 		rv = 1;
@@ -480,7 +468,7 @@ static int sd2gen(struct chan *c, int i, struct dir *dp)
 		pp = &unit->part[PART(c->qid)];
 		l = (pp->end - pp->start) * unit->secsize;
 		mkqid(&q, QID(DEV(c->qid), UNIT(c->qid), PART(c->qid), Qpart),
-		      unit->vers+pp->vers, QTFILE);
+		      unit->vers + pp->vers, QTFILE);
 		if (emptystr(pp->sdperm.user))
 			kstrdup(&pp->sdperm.user, eve);
 		devdir(c, q, pp->sdperm.name, l, pp->sdperm.user, pp->sdperm.perm, dp);
@@ -499,14 +487,14 @@ static int sd1gen(struct chan *c, int i, struct dir *dp)
 	switch (i) {
 	case Qtopctl:
 		mkqid(&q, QID(0, 0, 0, Qtopctl), 0, QTFILE);
-		devdir(c, q, "sdctl", 0, eve, 0644, dp);	/* no secrets */
+		devdir(c, q, "sdctl", 0, eve, 0644, dp); /* no secrets */
 		return 1;
 	}
 	return -1;
 }
 
 static int sdgen(struct chan *c, char *d, struct dirtab *dir, int j, int s,
-      struct dir *dp)
+                 struct dir *dp)
 {
 	struct qid q = {};
 	int64_t l;
@@ -524,9 +512,9 @@ static int sdgen(struct chan *c, char *d, struct dirtab *dir, int j, int s,
 			return 1;
 		}
 
-		if (s+Qtopbase < Qunitdir)
-			return sd1gen(c, s+Qtopbase, dp);
-		s -= (Qunitdir-Qtopbase);
+		if (s + Qtopbase < Qunitdir)
+			return sd1gen(c, s + Qtopbase, dp);
+		s -= (Qunitdir - Qtopbase);
 
 		qlock(&devslock);
 		for (i = 0; i < ARRAY_SIZE(devs); i++) {
@@ -544,7 +532,7 @@ static int sdgen(struct chan *c, char *d, struct dirtab *dir, int j, int s,
 		}
 
 		sdev = devs[i];
-		if ((sdev) == NULL) {
+		if (sdev == NULL) {
 			qunlock(&devslock);
 			return 0;
 		}
@@ -555,10 +543,10 @@ static int sdgen(struct chan *c, char *d, struct dirtab *dir, int j, int s,
 		unit = sdev->unit[s];
 		if (unit == NULL)
 			unit = sdgetunit(sdev, s);
-			if (unit == NULL) {
-				kref_put(&sdev->r);
-				return 0;
-			}
+		if (unit == NULL) {
+			kref_put(&sdev->r);
+			return 0;
+		}
 
 		mkqid(&q, QID(sdev->idno, s, 0, Qunitdir), 0, QTDIR);
 		if (emptystr(unit->sdperm.user))
@@ -592,11 +580,11 @@ static int sdgen(struct chan *c, char *d, struct dirtab *dir, int j, int s,
 		 * will return > 1.
 		 * Online is a bit of a large hammer but does the job.
 		 */
-		if (unit->sectors == 0
-		   || (unit->dev->ifc->online && unit->dev->ifc->online(unit) > 1))
+		if (unit->sectors == 0 ||
+		    (unit->dev->ifc->online && unit->dev->ifc->online(unit) > 1))
 			sdinitpart(unit);
 
-		i = s+Qunitbase;
+		i = s + Qunitbase;
 		if (i < Qpart) {
 			r = sd2gen(c, i, dp);
 			qunlock(&unit->ctl);
@@ -617,7 +605,7 @@ static int sdgen(struct chan *c, char *d, struct dirtab *dir, int j, int s,
 		}
 		l = (pp->end - pp->start) * (int64_t)unit->secsize;
 		mkqid(&q, QID(DEV(c->qid), UNIT(c->qid), i, Qpart),
-		      unit->vers+pp->vers, QTFILE);
+		      unit->vers + pp->vers, QTFILE);
 		if (emptystr(pp->sdperm.user))
 			kstrdup(&pp->sdperm.user, eve);
 		devdir(c, q, pp->sdperm.name, l, pp->sdperm.user, pp->sdperm.perm, dp);
@@ -718,8 +706,8 @@ static struct chan *sdopen(struct chan *c, int omode)
 		break;
 	case Qraw:
 		c->qid.vers = unit->vers;
-		if (test_and_set_bit(0,
-		                     (volatile unsigned long *)&unit->rawinuse) != 0) {
+		if (test_and_set_bit(0, (volatile unsigned long *)&unit->rawinuse) !=
+		    0) {
 			c->flag &= ~COPEN;
 			kref_put(&sdev->r);
 			error(EBUSY, "In use");
@@ -735,7 +723,7 @@ static struct chan *sdopen(struct chan *c, int omode)
 			nexterror();
 		}
 		pp = &unit->part[PART(c->qid)];
-		c->qid.vers = unit->vers+pp->vers;
+		c->qid.vers = unit->vers + pp->vers;
 		qunlock(&unit->ctl);
 		poperror();
 		break;
@@ -769,7 +757,7 @@ static void sdclose(struct chan *c)
 }
 
 static int32_t sdbio(struct chan *c, int write, char *a, int32_t len,
-	                 int64_t off)
+                     int64_t off)
 {
 	ERRSTACK(2);
 	int nchange;
@@ -811,7 +799,7 @@ static int32_t sdbio(struct chan *c, int write, char *a, int32_t len,
 		nexterror();
 	}
 	pp = &unit->part[PART(c->qid)];
-	if (unit->vers+pp->vers != c->qid.vers)
+	if (unit->vers + pp->vers != c->qid.vers)
 		error(EIO, "disk changed");
 
 	/*
@@ -825,17 +813,17 @@ static int32_t sdbio(struct chan *c, int write, char *a, int32_t len,
 	 * (sectors, secsize) can't change once the drive has
 	 * been brought online.
 	 */
-	bno = (off/unit->secsize) + pp->start;
-	nb = ((off+len+unit->secsize-1)/unit->secsize) + pp->start - bno;
-	max = SDmaxio/unit->secsize;
+	bno = (off / unit->secsize) + pp->start;
+	nb = ((off + len + unit->secsize - 1) / unit->secsize) + pp->start - bno;
+	max = SDmaxio / unit->secsize;
 	if (nb > max)
 		nb = max;
-	if (bno+nb > pp->end)
+	if (bno + nb > pp->end)
 		nb = pp->end - bno;
 	if (bno >= pp->end || nb == 0) {
 		if (write)
-			error(EIO, "bno(%d) >= pp->end(%d) or nb(%d) == 0",
-			      bno, pp->end, nb);
+			error(EIO, "bno(%d) >= pp->end(%d) or nb(%d) == 0", bno, pp->end,
+			      nb);
 		qunlock(&unit->ctl);
 		kref_put(&sdev->r);
 		poperror();
@@ -846,32 +834,32 @@ static int32_t sdbio(struct chan *c, int write, char *a, int32_t len,
 		poperror();
 	}
 
-	b = kzmalloc(nb*unit->secsize, MEM_WAIT);
+	b = kzmalloc(nb * unit->secsize, MEM_WAIT);
 	if (b == NULL)
-		error(ENOMEM, "%s: could not allocate %d bytes", nb*unit->secsize);
+		error(ENOMEM, "%s: could not allocate %d bytes", nb * unit->secsize);
 	if (waserror()) {
 		kfree(b);
 		if (!(unit->inquiry[1] & SDinq1removable))
-			kref_put(&sdev->r);		/* gadverdamme! */
+			kref_put(&sdev->r); /* gadverdamme! */
 		nexterror();
 	}
 
-	offset = off%unit->secsize;
-	if (offset+len > nb*unit->secsize)
-		len = nb*unit->secsize - offset;
+	offset = off % unit->secsize;
+	if (offset + len > nb * unit->secsize)
+		len = nb * unit->secsize - offset;
 	if (write) {
-		if (offset || (len%unit->secsize)) {
+		if (offset || (len % unit->secsize)) {
 			l = unit->dev->ifc->bio(unit, 0, 0, b, nb, bno);
 			if (l < 0)
 				error(EIO, "IO Error");
-			if (l < (nb*unit->secsize)) {
-				nb = l/unit->secsize;
-				l = nb*unit->secsize - offset;
+			if (l < (nb * unit->secsize)) {
+				nb = l / unit->secsize;
+				l = nb * unit->secsize - offset;
 				if (len > l)
 					len = l;
 			}
 		}
-		memmove(b+offset, a, len);
+		memmove(b + offset, a, len);
 		l = unit->dev->ifc->bio(unit, 0, 1, b, nb, bno);
 		if (l < 0)
 			error(EIO, "IO Error");
@@ -887,7 +875,7 @@ static int32_t sdbio(struct chan *c, int write, char *a, int32_t len,
 			len = 0;
 		else if (len > l - offset)
 			len = l - offset;
-		memmove(a, b+offset, len);
+		memmove(a, b + offset, len);
 	}
 	kfree(b);
 	poperror();
@@ -955,8 +943,8 @@ int sdsetsense(struct sdreq *r, int status, int key, int asc, int ascq)
 	if (status == SDcheck && !(r->flags & SDnosense)) {
 		/* request sense case from sdfakescsi */
 		len = sizeof unit->sense;
-		if (len > sizeof(r->sense)-1)
-			len = sizeof(r->sense)-1;
+		if (len > sizeof(r->sense) - 1)
+			len = sizeof(r->sense) - 1;
 		memmove(r->sense, unit->sense, len);
 		unit->sense[2] = 0;
 		unit->sense[12] = 0;
@@ -978,20 +966,20 @@ int sdmodesense(struct sdreq *r, uint8_t *cmd, void *info, int ilen)
 	 */
 	if ((cmd[2] & 0x3F) != 0 && (cmd[2] & 0x3F) != 0x3F)
 		return sdsetsense(r, SDcheck, 0x05, 0x24, 0);
-	len = (cmd[7]<<8)|cmd[8];
+	len = (cmd[7] << 8) | cmd[8];
 	if (len == 0)
 		return SDok;
-	if (len < 8+ilen)
+	if (len < 8 + ilen)
 		return sdsetsense(r, SDcheck, 0x05, 0x1A, 0);
 	if (r->data == NULL || r->dlen < len)
 		return sdsetsense(r, SDcheck, 0x05, 0x20, 1);
 	data = r->data;
 	memset(data, 0, 8);
-	data[0] = ilen>>8;
+	data[0] = ilen >> 8;
 	data[1] = ilen;
 	if (ilen)
-		memmove(data+8, info, ilen);
-	r->rlen = 8+ilen;
+		memmove(data + 8, info, ilen);
+	r->rlen = 8 + ilen;
 	return sdsetsense(r, SDok, 0, 0, 0);
 }
 
@@ -1009,8 +997,8 @@ int sdfakescsi(struct sdreq *r, void *info, int ilen)
 	 * Rewrite read(6)/write(6) into read(10)/write(10).
 	 */
 	switch (cmd[0]) {
-	case 0x08:	/* read */
-	case 0x0A:	/* write */
+	case 0x08: /* read */
+	case 0x0A: /* write */
 		cmd[9] = 0;
 		cmd[8] = cmd[4];
 		cmd[7] = 0;
@@ -1029,17 +1017,17 @@ int sdfakescsi(struct sdreq *r, void *info, int ilen)
 	 * Fail any command with a LUN except INQUIRY which
 	 * will return 'logical unit not supported'.
 	 */
-	if ((cmd[1]>>5) && cmd[0] != 0x12)
+	if ((cmd[1] >> 5) && cmd[0] != 0x12)
 		return sdsetsense(r, SDcheck, 0x05, 0x25, 0);
 
 	switch (cmd[0]) {
 	default:
 		return sdsetsense(r, SDcheck, 0x05, 0x20, 0);
 
-	case 0x00:	/* test unit ready */
+	case 0x00: /* test unit ready */
 		return sdsetsense(r, SDok, 0, 0, 0);
 
-	case 0x03:	/* request sense */
+	case 0x03: /* request sense */
 		if (cmd[4] < sizeof unit->sense)
 			len = cmd[4];
 		else
@@ -1050,7 +1038,7 @@ int sdfakescsi(struct sdreq *r, void *info, int ilen)
 		}
 		return sdsetsense(r, SDok, 0, 0, 0);
 
-	case 0x12:	/* inquiry */
+	case 0x12: /* inquiry */
 		if (cmd[4] < sizeof unit->inquiry)
 			len = cmd[4];
 		else
@@ -1061,13 +1049,13 @@ int sdfakescsi(struct sdreq *r, void *info, int ilen)
 		}
 		return sdsetsense(r, SDok, 0, 0, 0);
 
-	case 0x1B:	/* start/stop unit */
+	case 0x1B: /* start/stop unit */
 		/*
 		 * nop for now, can use power management later.
 		 */
 		return sdsetsense(r, SDok, 0, 0, 0);
 
-	case 0x25:	/* read capacity */
+	case 0x25: /* read capacity */
 		if ((cmd[1] & 0x01) || cmd[2] || cmd[3])
 			return sdsetsense(r, SDcheck, 0x05, 0x24, 0);
 		if (r->data == NULL || r->dlen < 8)
@@ -1078,19 +1066,19 @@ int sdfakescsi(struct sdreq *r, void *info, int ilen)
 		 */
 		len = unit->sectors - 1;
 		p = r->data;
-		*p++ = len>>24;
-		*p++ = len>>16;
-		*p++ = len>>8;
+		*p++ = len >> 24;
+		*p++ = len >> 16;
+		*p++ = len >> 8;
 		*p++ = len;
 		len = 512;
-		*p++ = len>>24;
-		*p++ = len>>16;
-		*p++ = len>>8;
+		*p++ = len >> 24;
+		*p++ = len >> 16;
+		*p++ = len >> 8;
 		*p++ = len;
 		r->rlen = p - (uint8_t *)r->data;
 		return sdsetsense(r, SDok, 0, 0, 0);
 
-	case 0x9E:	/* long read capacity */
+	case 0x9E: /* long read capacity */
 		if ((cmd[1] & 0x01) || cmd[2] || cmd[3])
 			return sdsetsense(r, SDcheck, 0x05, 0x24, 0);
 		if (r->data == NULL || r->dlen < 8)
@@ -1100,29 +1088,29 @@ int sdfakescsi(struct sdreq *r, void *info, int ilen)
 		 */
 		len = unit->sectors - 1;
 		p = r->data;
-		*p++ = len>>56;
-		*p++ = len>>48;
-		*p++ = len>>40;
-		*p++ = len>>32;
-		*p++ = len>>24;
-		*p++ = len>>16;
-		*p++ = len>>8;
+		*p++ = len >> 56;
+		*p++ = len >> 48;
+		*p++ = len >> 40;
+		*p++ = len >> 32;
+		*p++ = len >> 24;
+		*p++ = len >> 16;
+		*p++ = len >> 8;
 		*p++ = len;
 		len = 512;
-		*p++ = len>>24;
-		*p++ = len>>16;
-		*p++ = len>>8;
+		*p++ = len >> 24;
+		*p++ = len >> 16;
+		*p++ = len >> 8;
 		*p++ = len;
 		r->rlen = p - (uint8_t *)r->data;
 		return sdsetsense(r, SDok, 0, 0, 0);
 
-	case 0x5A:	/* mode sense */
+	case 0x5A: /* mode sense */
 		return sdmodesense(r, cmd, info, ilen);
 
-	case 0x28:	/* read */
-	case 0x2A:	/* write */
-	case 0x88:	/* read16 */
-	case 0x8a:	/* write16 */
+	case 0x28: /* read */
+	case 0x2A: /* write */
+	case 0x88: /* read16 */
+	case 0x8a: /* write16 */
 		return SDnostatus;
 	}
 }
@@ -1142,7 +1130,7 @@ static long sdread(struct chan *c, void *a, long n, int64_t off)
 	default:
 		error(EPERM, "Permission denied");
 	case Qtopctl:
-		mm = 64*1024;	/* room for register dumps */
+		mm = 64 * 1024; /* room for register dumps */
 		p = buf = kzmalloc(mm, 0);
 		if (p == NULL)
 			error(ENOMEM, "Alloc of %d bytes failed", mm);
@@ -1168,12 +1156,11 @@ static long sdread(struct chan *c, void *a, long n, int64_t off)
 			error(ENOENT, "No such device");
 
 		unit = sdev->unit[UNIT(c->qid)];
-		mm = 16*1024;	/* room for register dumps */
+		mm = 16 * 1024; /* room for register dumps */
 		p = kzmalloc(mm, 0);
 		if (p == NULL)
 			error(ENOMEM, "Alloc of %d bytes failed", mm);
-		l = snprintf(p, mm, "inquiry %.48s\n",
-		            (char *)unit->inquiry+8);
+		l = snprintf(p, mm, "inquiry %.48s\n", (char *)unit->inquiry + 8);
 		qlock(&unit->ctl);
 		/*
 		 * If there's a device specific routine it must
@@ -1181,20 +1168,18 @@ static long sdread(struct chan *c, void *a, long n, int64_t off)
 		 * and the garscadden trains.
 		 */
 		if (unit->dev->ifc->rctl)
-			l += unit->dev->ifc->rctl(unit, p+l, mm-l);
+			l += unit->dev->ifc->rctl(unit, p + l, mm - l);
 		if (unit->sectors == 0)
 			sdinitpart(unit);
 		if (unit->sectors) {
 			if (unit->dev->ifc->rctl == NULL)
-				l += snprintf(p+l, mm-l,
-				             "geometry %llu %lu\n",
-				             unit->sectors, unit->secsize);
+				l += snprintf(p + l, mm - l, "geometry %llu %lu\n",
+				              unit->sectors, unit->secsize);
 			pp = unit->part;
 			for (i = 0; i < unit->npart; i++) {
 				if (pp->valid)
-					l += snprintf(p+l, mm-l,
-					             "part %s %llu %llu\n",
-					             pp->sdperm.name, pp->start, pp->end);
+					l += snprintf(p + l, mm - l, "part %s %llu %llu\n",
+					              pp->sdperm.name, pp->start, pp->end);
 				pp++;
 			}
 		}
@@ -1237,7 +1222,7 @@ static long sdread(struct chan *c, void *a, long n, int64_t off)
 	}
 }
 
-static void legacytopctl(struct cmdbuf*);
+static void legacytopctl(struct cmdbuf *);
 
 static long sdwrite(struct chan *c, void *a, long n, int64_t off)
 {
@@ -1447,15 +1432,13 @@ static int32_t sdwstat(struct chan *c, uint8_t *dp, int32_t n)
 		break;
 	case Qpart:
 		pp = &unit->part[PART(c->qid)];
-		if (unit->vers+pp->vers != c->qid.vers)
+		if (unit->vers + pp->vers != c->qid.vers)
 			error(ENOENT, "No such file or directory");
 		perm = &pp->sdperm;
 		break;
 	}
 
-	/* no users on akaros yet.
-	 *if (strcmp(up->user, perm->user) && !iseve())
-	 *	error(Eperm);*/
+	/* TODO: Implement permissions checking and raise errors as appropriate. */
 
 	d = kzmalloc(sizeof(struct dir) + n, 0);
 	n = convM2D(dp, n, &d[0], (char *)&d[1]);
@@ -1492,7 +1475,7 @@ static int configure(char *spec, struct devconf *cf)
 	if (sdifc[i] == NULL)
 		error(ENOENT, "sd type not found");
 	if (p)
-		*(p-1) = '/';
+		*(p - 1) = '/';
 
 	if (sdifc[i]->probe == NULL)
 		error(EIO, "sd type cannot probe");
@@ -1552,38 +1535,34 @@ static int sdconfig(int on, char *spec, struct devconf *cf)
 	return unconfigure(spec);
 }
 
-static void sdinit(void)
-{
-}
-
 struct dev sddevtab __devtab = {
-	.name = "sd",
+    .name = "sd",
 
-	.reset = sdreset,
-	.init = sdinit,
-	.shutdown = devshutdown,
-	.attach = sdattach,
-	.walk = sdwalk,
-	.stat = sdstat,
-	.open = sdopen,
-	.create = devcreate,
-	.close = sdclose,
-	.read = sdread,
-	.bread = devbread,
-	.write = sdwrite,
-	.bwrite = devbwrite,
-	.remove = devremove,
-	.wstat = sdwstat,
-	.power = devpower,
+    .reset = sdreset,
+    .init = devinit,
+    .shutdown = devshutdown,
+    .attach = sdattach,
+    .walk = sdwalk,
+    .stat = sdstat,
+    .open = sdopen,
+    .create = devcreate,
+    .close = sdclose,
+    .read = sdread,
+    .bread = devbread,
+    .write = sdwrite,
+    .bwrite = devbwrite,
+    .remove = devremove,
+    .wstat = sdwstat,
+    .power = devpower,
 };
 
 /*
  * This is wrong for so many reasons.  This code must go.
  */
 struct confdata {
-	int	on;
+	int on;
 	char *spec;
-	struct devconf	cf;
+	struct devconf cf;
 };
 
 static void parseswitch(struct confdata *cd, char *option)
@@ -1608,7 +1587,7 @@ static struct devport *getnewport(struct devconf *dc)
 	struct devport *p;
 
 	p = (struct devport *)kzmalloc((dc->nports + 1) * sizeof(struct devport),
-				       0);
+	                               0);
 	if (p == NULL)
 		error(ENOMEM, "Can't allocate %d bytes for %d ports", dc->nports,
 		      (dc->nports + 1) * sizeof(struct devport));
@@ -1629,10 +1608,10 @@ static void parseport(struct confdata *cd, char *option)
 	struct devport *p;
 
 	if ((cd->cf.nports == 0) ||
-		(cd->cf.ports[cd->cf.nports-1].port != (uint32_t)-1))
+	    (cd->cf.ports[cd->cf.nports - 1].port != (uint32_t)-1))
 		p = getnewport(&cd->cf);
 	else
-		p = &cd->cf.ports[cd->cf.nports-1];
+		p = &cd->cf.ports[cd->cf.nports - 1];
 	p->port = strtol(option, &e, 0);
 	if (e == NULL || *e != '\0')
 		error(EINVAL, "option %s is not a number", option);
@@ -1643,10 +1622,10 @@ static void parsesize(struct confdata *cd, char *option)
 	char *e;
 	struct devport *p;
 
-	if (cd->cf.nports == 0 || cd->cf.ports[cd->cf.nports-1].size != -1)
+	if (cd->cf.nports == 0 || cd->cf.ports[cd->cf.nports - 1].size != -1)
 		p = getnewport(&cd->cf);
 	else
-		p = &cd->cf.ports[cd->cf.nports-1];
+		p = &cd->cf.ports[cd->cf.nports - 1];
 	p->size = (int)strtol(option, &e, 0);
 	if (e == NULL || *e != '\0')
 		error(EINVAL, "%s is not a number", option);
@@ -1667,15 +1646,15 @@ static void parsetype(struct confdata *cd, char *option)
 }
 
 static struct {
-	char	*name;
-	void	(*parse)(struct confdata*, char *unused_char_p_t);
+	char *name;
+	void (*parse)(struct confdata *, char *unused_char_p_t);
 } options[] = {
-	{"switch",	parseswitch},
-	{"spec",		parsespec},
-	{"port",		parseport},
-	{"size",		parsesize},
-	{"irq",		parseirq},
-	{"type",		parsetype},
+    {"switch", parseswitch},
+    {"spec", parsespec},
+    {"port", parseport},
+    {"size", parsesize},
+    {"irq", parseirq},
+    {"type", parsetype},
 };
 
 static void legacytopctl(struct cmdbuf *cb)
@@ -1684,21 +1663,21 @@ static void legacytopctl(struct cmdbuf *cb)
 	int i, j;
 	struct confdata cd;
 
-	memset(&cd, 0, sizeof cd);
+	memset(&cd, 0, sizeof(cd));
 	cd.on = -1;
 	for (i = 0; i < cb->nf; i += 2) {
-		if (i+2 > cb->nf)
+		if (i + 2 > cb->nf)
 			error(EINVAL, "FIX ME. I don't know what this means");
 		opt = cb->f[i];
 		for (j = 0; j < ARRAY_SIZE(options); j++)
 			if (strcmp(opt, options[j].name) == 0) {
-				options[j].parse(&cd, cb->f[i+1]);
+				options[j].parse(&cd, cb->f[i + 1]);
 				break;
 			}
 		if (j == ARRAY_SIZE(options))
 			error(EINVAL, "FIX ME");
 	}
-	/* this has been rewritten to accomodate sdaoe */
+	/* this has been rewritten to accommodate sdaoe */
 	if (cd.on < 0 || cd.spec == 0)
 		error(EINVAL, "cd.on(%d) < 0 or cd.spec == 0", cd.on);
 	if (cd.on && cd.cf.type == NULL)

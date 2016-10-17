@@ -48,7 +48,7 @@ struct sdunit {
 	uint32_t vers;
 	struct sdperm ctlperm;
 
-	qlock_t raw;         /* raw read or write in progress */
+	qlock_t raw;       /* raw read or write in progress */
 	uint32_t rawinuse; /* really just a test-and-set */
 	int state;
 	struct sdreq *req;
@@ -59,7 +59,7 @@ struct sdunit {
  * Each controller is represented by a struct sdev.
  */
 struct sdev {
-	struct kref r;      /* Number of callers using device */
+	struct kref r;     /* Number of callers using device */
 	struct sdifc *ifc; /* pnp/legacy */
 	void *ctlr;
 	int idno;
@@ -68,9 +68,9 @@ struct sdev {
 
 	qlock_t ql; /* enable/disable */
 	int enabled;
-	int nunit;      /* Number of units */
+	int nunit;        /* Number of units */
 	qlock_t unitlock; /* `Loading' of units */
-	int *unitflg;   /* Unit flags */
+	int *unitflg;     /* Unit flags */
 	struct sdunit **unit;
 };
 
@@ -185,8 +185,8 @@ struct devport {
 };
 
 struct devconf {
-	uint32_t intnum; /* interrupt number */
-	char *type;      /* card type, malloced */
-	int nports;      /* Number of ports */
-	struct devport *ports;  /* The ports themselves */
+	uint32_t intnum;       /* interrupt number */
+	char *type;            /* card type, malloced */
+	int nports;            /* Number of ports */
+	struct devport *ports; /* The ports themselves */
 };
