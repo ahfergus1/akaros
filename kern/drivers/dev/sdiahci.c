@@ -1943,7 +1943,7 @@ static int iario(struct sdreq *r)
 {
 	ERRSTACK(2);
 	int i, n, count, try, max, flag, task;
-	int64_t lba;
+	uint64_t lba;
 	char *name;
 	unsigned char *cmd, *data;
 	void *port;
@@ -1978,7 +1978,7 @@ static int iario(struct sdreq *r)
 		return SDcheck;
 	}
 
-	lba = cmd[2] << 24 | cmd[3] << 16 | cmd[4] << 8 | cmd[5];
+	lba = (uint32_t)(cmd[2] << 24) | cmd[3] << 16 | cmd[4] << 8 | cmd[5];
 	count = cmd[7] << 8 | cmd[8];
 	if (r->data == NULL)
 		return SDok;
